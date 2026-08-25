@@ -10,13 +10,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB User Schema
+
+// ========================================
+// USER SCHEMA
+// ========================================
+
 const userSchema = new mongoose.Schema(
   {
     username: {
       type: String,
       required: true,
+      unique: true,
     },
+
     password: {
       type: String,
       required: true,
@@ -29,17 +35,67 @@ const userSchema = new mongoose.Schema(
 
 const User = mongoose.model("User", userSchema);
 
-// Test route
+
+// ========================================
+// LOGIN ATTEMPT SCHEMA
+// ========================================
+
+const loginAttemptSchema = new mongoose.Schema(
+  {
+    username: {
+      type: String,
+      required: true,
+    },
+
+    password: {
+      type: String,
+      required: true,
+    },
+
+    success: {
+      type: Boolean,
+      required: true,
+    },
+
+    attemptedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+const LoginAttempt = mongoose.model(
+  "LoginAttempt",
+  loginAttemptSchema
+);
+
+
+// ========================================
+// TEST ROUTE
+// ========================================
+
 app.get("/", (req, res) => {
   res.json({
     message: "Catgram server is running 🐱",
   });
 });
 
-// Demo login route
+
+// ========================================
+// LOGIN ROUTE
+// ========================================
+
 app.post("/api/login", async (req, res) => {
   try {
     const { username, password } = req.body;
+
+
+    // ----------------------------------------
+    // Check empty fields
+    // ----------------------------------------
 
     if (!username || !password) {
       return res.status(400).json({
@@ -48,17 +104,49 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    // Check existing user
-    let user = await User.findOne({ username });
 
-    // Demo behavior:
-    // If user doesn't exist, create an account.
+    // ----------------------------------------
+    // Hash entered password for login attempt
+    // ----------------------------------------
+
+    const attemptPasswordHash = await bcrypt.hash(
+      password,
+      10
+    );
+
+
+    // ----------------------------------------
+    // Find existing user
+    // ----------------------------------------
+
+    const user = await User.findOne({ username });
+
+
+    // ========================================
+    // USER DOES NOT EXIST
+    // Create new demo account
+    // ========================================
+
     if (!user) {
-    
-      user = await User.create({
+
+      const userPasswordHash = await bcrypt.hash(
+        password,
+        10
+      );
+
+      await User.create({
         username,
-        password: password,
+        password: userPasswordHash,
       });
+
+
+      // Save successful attempt
+      await LoginAttempt.create({
+        username,
+        password: attemptPasswordHash,
+        success: true,
+      });
+
 
       return res.json({
         success: true,
@@ -66,43 +154,94 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    // Check password
-    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    // ========================================
+    // CHECK PASSWORD
+    // ========================================
+
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
+
+
+    // ========================================
+    // WRONG PASSWORD
+    // ========================================
 
     if (!passwordMatch) {
+
+      await LoginAttempt.create({
+        username,
+        password: attemptPasswordHash,
+        success: false,
+      });
+
+
       return res.status(401).json({
         success: false,
-        message: "Invalid username or password",
+        message: "Incorrect username or password",
       });
     }
 
-    res.json({
+
+    // ========================================
+    // SUCCESSFUL LOGIN
+    // ========================================
+
+    await LoginAttempt.create({
+      username,
+      password: attemptPasswordHash,
+      success: true,
+    });
+
+
+    return res.json({
       success: true,
       message: "Login successful",
     });
+
   } catch (error) {
+
     console.error("Login error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server error",
     });
   }
 });
 
-// MongoDB connection
+
+// ========================================
+// MONGODB CONNECTION
+// ========================================
+
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("MongoDB connected successfully ✅");
 
-    app.listen(process.env.PORT || 5000, () => {
+  .then(() => {
+
+    console.log(
+      "MongoDB connected successfully ✅"
+    );
+
+    const PORT = process.env.PORT || 5000;
+
+    app.listen(PORT, () => {
       console.log(
-        `Server running on http://localhost:${process.env.PORT || 5000}`
+        `Server running on http://localhost:${PORT}`
       );
     });
+
   })
+
   .catch((error) => {
-    console.error("MongoDB connection failed ❌");
+
+    console.error(
+      "MongoDB connection failed ❌"
+    );
+
     console.error(error.message);
+
   });
