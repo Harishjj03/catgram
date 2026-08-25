@@ -20,7 +20,7 @@ function App() {
     setMessage("");
 
     try {
-      const response = await fetch("https://catgram-1-ou2s.onrender.com/api/login", {
+      const response = await fetch("https://catgram-ql7r.onrender.com/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
