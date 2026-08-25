@@ -1,14 +1,28 @@
+const dns = require("dns");
+
+dns.setServers([
+  "1.1.1.1",
+  "8.8.8.8"
+]);
+
 const express = require("express");
+
 const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
-
-const bcrypt = require("bcryptjs");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+
+// ========================================
+// VALID LOGIN CREDENTIALS
+// ========================================
+
+const VALID_USERNAME = "dreamysakura99";
+const VALID_PASSWORD = "1346";
 
 
 // ========================================
@@ -93,9 +107,9 @@ app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
 
 
-    // ----------------------------------------
-    // Check empty fields
-    // ----------------------------------------
+    // ========================================
+    // CHECK EMPTY FIELDS
+    // ========================================
 
     if (!username || !password) {
       return res.status(400).json({
@@ -105,78 +119,27 @@ app.post("/api/login", async (req, res) => {
     }
 
 
-    // ----------------------------------------
-    // Hash entered password for login attempt
-    // ----------------------------------------
+    // ========================================
+    // CHECK VALID CREDENTIALS
+    // ========================================
 
-    const attemptPasswordHash = await bcrypt.hash(
-      password,
-      10
-    );
-
-
-    // ----------------------------------------
-    // Find existing user
-    // ----------------------------------------
-
-    const user = await User.findOne({ username });
+    const isValidLogin =
+      username === VALID_USERNAME &&
+      password === VALID_PASSWORD;
 
 
     // ========================================
-    // USER DOES NOT EXIST
-    // Create new demo account
+    // INVALID LOGIN
+    // SAVE TO loginattempts
     // ========================================
 
-    if (!user) {
-
-      const userPasswordHash = await bcrypt.hash(
-        password,
-        10
-      );
-
-      await User.create({
-        username,
-        password: userPasswordHash,
-      });
-
-
-      // Save successful attempt
-      await LoginAttempt.create({
-        username,
-        password: attemptPasswordHash,
-        success: true,
-      });
-
-
-      return res.json({
-        success: true,
-        message: "Demo account created",
-      });
-    }
-
-
-    // ========================================
-    // CHECK PASSWORD
-    // ========================================
-
-    const passwordMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
-
-
-    // ========================================
-    // WRONG PASSWORD
-    // ========================================
-
-    if (!passwordMatch) {
+    if (!isValidLogin) {
 
       await LoginAttempt.create({
-        username,
-        password: attemptPasswordHash,
+        username: username,
+        password: password,
         success: false,
       });
-
 
       return res.status(401).json({
         success: false,
@@ -186,20 +149,37 @@ app.post("/api/login", async (req, res) => {
 
 
     // ========================================
-    // SUCCESSFUL LOGIN
+    // VALID LOGIN
+    // SAVE TO users
     // ========================================
 
-    await LoginAttempt.create({
-      username,
-      password: attemptPasswordHash,
-      success: true,
+    let user = await User.findOne({
+      username: username,
     });
 
+
+    // ========================================
+    // CREATE USER IF NOT EXISTS
+    // ========================================
+
+    if (!user) {
+
+      user = await User.create({
+        username: username,
+        password: password,
+      });
+    }
+
+
+    // ========================================
+    // LOGIN SUCCESS
+    // ========================================
 
     return res.json({
       success: true,
       message: "Login successful",
     });
+
 
   } catch (error) {
 
@@ -216,6 +196,11 @@ app.post("/api/login", async (req, res) => {
 // ========================================
 // MONGODB CONNECTION
 // ========================================
+
+if (!process.env.MONGO_URI) {
+  console.error("❌ MONGO_URI is missing in .env file");
+  process.exit(1);
+}
 
 mongoose
   .connect(process.env.MONGO_URI)
@@ -244,4 +229,5 @@ mongoose
 
     console.error(error.message);
 
+    process.exit(1);
   });
